@@ -1,0 +1,13 @@
+.env
+.venv/
+venv/
+__pycache__/
+*.pyc
+.DS_Store
+chroma_db/
+vector_store/
+*.db
+.streamlit/secrets.toml
+streamlit.pid
+streamlit_run.log
+node_modules/
