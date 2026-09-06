@@ -61,7 +61,7 @@ understanding, not prediction.
 User question ─▶ Dataset profile context (if a dataset is loaded)
               ─▶ RAG-retrieved knowledge base context (top-k chunks)
               ─▶ System prompt (role + rules) + conversation history
-              ─▶ ChatGroq (Llama model) ─▶ Answer
+              ─▶ ChatGroq (Llama) or ChatGoogleGenerativeAI (Gemini), picked via LLM_PROVIDER ─▶ Answer
 ```
 
 Both contexts are always attached; the system prompt instructs the model to prioritize the dataset
@@ -111,12 +111,22 @@ Defined in [src/prompts.py](src/prompts.py):
 
 ## Model Configuration
 
+DataSense AI supports two interchangeable LLM providers, selected via `LLM_PROVIDER` in `.env`
+(see [src/llm.py](src/llm.py)). If `LLM_PROVIDER` is left blank, the provider is auto-detected from
+whichever API key is present (Groq takes priority if both are set).
+
 | Parameter | Value | Purpose |
 |---|---|---|
-| Model | `llama-3.3-70b-versatile` (via `GROQ_MODEL`) | Llama model served by Groq |
+| Model (Groq) | `llama-3.3-70b-versatile` (via `GROQ_MODEL`) | Llama model served by Groq |
+| Model (Gemini) | `gemini-3.6-flash` (via `GEMINI_MODEL`) | Google Gemini model |
 | Temperature | `0.3` | Controls response creativity/randomness |
-| Max Output Tokens | `512` | Controls maximum response length |
+| Max Output Tokens | `512` (Groq) / `2048` (Gemini) | Controls maximum response length |
 | Top P | `0.9` | Controls nucleus sampling |
+
+Gemini's current "flash" models reason internally before answering, and that reasoning is billed
+against `max_output_tokens`; at 512 the budget was consistently exhausted mid-thought (`finish_reason:
+MAX_TOKENS`, verified while testing), producing a truncated, garbled answer. 2048 was the smallest
+value that reliably left room for both the reasoning and a complete answer.
 
 These are fixed, documented defaults shown read-only on the Settings page — the API key can never be
 changed or viewed from the UI.
@@ -125,7 +135,7 @@ changed or viewed from the UI.
 
 - **UI**: Streamlit, custom CSS
 - **Data**: Pandas
-- **LLM**: Groq API (Llama models), via `langchain-groq`
+- **LLM**: Groq API (Llama models) via `langchain-groq`, or Google Gemini via `langchain-google-genai`
 - **RAG**: LangChain (`langchain`, `langchain-community`), PyPDF, FAISS, Sentence-Transformers
 - **Charts**: Plotly
 
@@ -165,12 +175,15 @@ pip install -r requirements.txt
 
 ## Environment Variables
 
-Copy `.env.example` to `.env` and fill in your own key — never commit `.env`.
+Copy `.env.example` to `.env` and fill in the provider you have a key for — never commit `.env`.
 
 | Variable | Required | Description |
 |---|---|---|
-| `GROQ_API_KEY` | Yes | API key from [console.groq.com](https://console.groq.com/keys) |
+| `LLM_PROVIDER` | No | `groq` or `gemini`. Auto-detected from whichever key below is set if left blank. |
+| `GROQ_API_KEY` | If using Groq | API key from [console.groq.com](https://console.groq.com/keys) |
 | `GROQ_MODEL` | No | Overrides the default Llama model (`llama-3.3-70b-versatile`) |
+| `GEMINI_API_KEY` | If using Gemini | API key from [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
+| `GEMINI_MODEL` | No | Overrides the default Gemini model (`gemini-3.6-flash`) |
 
 ## Running Locally
 

@@ -1,18 +1,37 @@
-"""LLM integration: Llama models served via the Groq API, through LangChain.
+"""LLM integration: pluggable between Llama models via Groq and Google Gemini,
+both through LangChain.
 
 Configuration (temperature / max tokens / top_p) is intentionally fixed to
 sane, documented defaults rather than exposed as freeform user controls -
 Settings page only *displays* these values (see README, section 15).
+
+Provider selection (see .env.example):
+- LLM_PROVIDER=groq|gemini picks explicitly.
+- If unset, the provider is auto-detected from whichever API key is present
+  (GROQ_API_KEY -> groq, GEMINI_API_KEY/GOOGLE_API_KEY -> gemini). Groq wins
+  if both are set. Defaults to "groq" if neither is configured yet, so the
+  Settings page has something sensible to display before setup.
 """
 
 from __future__ import annotations
 
 import os
 
-DEFAULT_MODEL = "llama-3.3-70b-versatile"
+PROVIDER_GROQ = "groq"
+PROVIDER_GEMINI = "gemini"
+
+DEFAULT_GROQ_MODEL = "llama-3.3-70b-versatile"
+DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
+
 DEFAULT_TEMPERATURE = 0.3
 DEFAULT_MAX_TOKENS = 512
 DEFAULT_TOP_P = 0.9
+
+# Gemini's current "flash" models reason internally before answering, and
+# that reasoning is billed against max_output_tokens. At 512 the budget is
+# often exhausted mid-thought, producing a truncated/garbled answer (finish
+# reason MAX_TOKENS). 2048 leaves enough room for reasoning + a full answer.
+GEMINI_MAX_TOKENS = 2048
 
 
 class LLMConfigError(Exception):
@@ -23,15 +42,62 @@ class LLMResponseError(Exception):
     """Raised when the LLM call itself fails."""
 
 
+def get_provider() -> str:
+    explicit = os.getenv("LLM_PROVIDER", "").strip().lower()
+    if explicit in (PROVIDER_GROQ, PROVIDER_GEMINI):
+        return explicit
+    if os.getenv("GROQ_API_KEY"):
+        return PROVIDER_GROQ
+    if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
+        return PROVIDER_GEMINI
+    return PROVIDER_GROQ
+
+
 def get_model_name() -> str:
-    return os.getenv("GROQ_MODEL", DEFAULT_MODEL)
+    if get_provider() == PROVIDER_GEMINI:
+        return os.getenv("GEMINI_MODEL", DEFAULT_GEMINI_MODEL)
+    return os.getenv("GROQ_MODEL", DEFAULT_GROQ_MODEL)
+
+
+def get_provider_display_name() -> str:
+    """Short label for the sidebar, e.g. 'Gemini' or 'Llama via Groq'."""
+    return "Gemini" if get_provider() == PROVIDER_GEMINI else "Llama via Groq"
+
+
+def get_max_tokens() -> int:
+    return GEMINI_MAX_TOKENS if get_provider() == PROVIDER_GEMINI else DEFAULT_MAX_TOKENS
+
+
+def get_provider_label() -> str:
+    """Longer label for the Settings page, e.g. 'gemini-2.5-flash (Gemini)'."""
+    return f"{get_model_name()} ({get_provider_display_name()})"
 
 
 def is_configured() -> bool:
+    if get_provider() == PROVIDER_GEMINI:
+        return bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
     return bool(os.getenv("GROQ_API_KEY"))
 
 
 def get_llm():
+    provider = get_provider()
+
+    if provider == PROVIDER_GEMINI:
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        if not api_key:
+            raise LLMConfigError(
+                "GEMINI_API_KEY belum diatur. Tambahkan API key pada file .env (lihat .env.example)."
+            )
+        return ChatGoogleGenerativeAI(
+            google_api_key=api_key,
+            model=get_model_name(),
+            temperature=DEFAULT_TEMPERATURE,
+            max_output_tokens=get_max_tokens(),
+            top_p=DEFAULT_TOP_P,
+        )
+
     from langchain_groq import ChatGroq
 
     api_key = os.getenv("GROQ_API_KEY")
@@ -43,7 +109,7 @@ def get_llm():
         api_key=api_key,
         model=get_model_name(),
         temperature=DEFAULT_TEMPERATURE,
-        max_tokens=DEFAULT_MAX_TOKENS,
+        max_tokens=get_max_tokens(),
         model_kwargs={"top_p": DEFAULT_TOP_P},
     )
 

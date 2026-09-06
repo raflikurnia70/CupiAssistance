@@ -2,7 +2,8 @@
 
 Streamlit entry point. Wires together dataset profiling (Pandas), a RAG
 knowledge base (LangChain + FAISS), and an LLM chat assistant (Llama via
-Groq) behind a single-page navigation shell.
+Groq, or Google Gemini - see src/llm.py) behind a single-page navigation
+shell.
 """
 
 from __future__ import annotations
@@ -106,7 +107,7 @@ def render_sidebar() -> None:
         st.markdown(
             '<div style="font-size:0.72rem;color:#8592AD;text-transform:uppercase;'
             'letter-spacing:0.05em;margin:10px 0 4px 0;">Model</div>'
-            '<div style="font-size:0.86rem;color:#E7ECF6;margin-bottom:0.8rem;">Llama via Groq</div>',
+            f'<div style="font-size:0.86rem;color:#E7ECF6;margin-bottom:0.8rem;">{llm.get_provider_display_name()}</div>',
             unsafe_allow_html=True,
         )
 
@@ -402,9 +403,9 @@ def render_settings() -> None:
 
     st.markdown("#### AI Configuration")
     rows = [
-        ("Model", f"{llm.get_model_name()} (Llama via Groq)"),
+        ("Model", llm.get_provider_label()),
         ("Temperature", str(llm.DEFAULT_TEMPERATURE)),
-        ("Max Output Tokens", str(llm.DEFAULT_MAX_TOKENS)),
+        ("Max Output Tokens", str(llm.get_max_tokens())),
         ("Top P", str(llm.DEFAULT_TOP_P)),
         ("RAG", "Enabled" if vectorstore is not None else "Unavailable"),
         ("Vector Database", "FAISS"),
